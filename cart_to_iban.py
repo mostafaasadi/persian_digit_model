@@ -199,39 +199,47 @@ def main():
     # Load the CAPTCHA solving model
     model = load_captcha_model(MODEL_PATH)
 
-    digit_bounding_boxes = None
-    predicted_captcha = None
-    nonce = None
+    while True:
+        digit_bounding_boxes = None
+        predicted_captcha = None
+        nonce = None
+        key = None
 
-    for _ in range(3):
-        nonce = extract_nonce()
-        if not nonce:
-            print("Failed to extract nonce. Retrying...")
+        for _ in range(10):
+            nonce = extract_nonce()
+            if not nonce:
+                print("Failed to extract nonce. Retrying...")
+                continue
+
+            captcha_image_base64, key = fetch_captcha()
+            if not captcha_image_base64:
+                print("Failed to fetch CAPTCHA. Retrying...")
+                continue
+
+            digit_bounding_boxes, thresh = preprocess_captcha_image(captcha_image_base64)
+            if not digit_bounding_boxes:
+                print("Failed to preprocess CAPTCHA image. Retrying...")
+                continue
+
+            predicted_captcha = solve_captcha(model, digit_bounding_boxes, thresh)
+            if not predicted_captcha:
+                print("Failed to solve CAPTCHA. Retrying...")
+                continue
+
+            break
+        else:
+            print("All attempts failed. Restarting the whole process...")
             continue
 
-        captcha_image_base64, key = fetch_captcha()
-        if not captcha_image_base64:
-            print("Failed to fetch CAPTCHA. Retrying...")
-            continue
+        result = submit_form(card_number, key, predicted_captcha, nonce)
+        result['card_number'] = card_number
+        result['captcha'] = predicted_captcha
 
-        digit_bounding_boxes, thresh = preprocess_captcha_image(captcha_image_base64)
-        if not digit_bounding_boxes:
-            print("Failed to preprocess CAPTCHA image. Retrying...")
-            continue
-
-        predicted_captcha = solve_captcha(model, digit_bounding_boxes, thresh)
-        if not predicted_captcha:
-            print("Failed to solve CAPTCHA. Retrying...")
-            continue
-
-    result = submit_form(card_number, key, predicted_captcha, nonce)
-    result['card_number'] = card_number
-    result['captcha'] = predicted_captcha
-    if result["success"]:
-        print_formatted_result(result)
-    else:
-        print("Request failed, exiting.")
-        exit()
+        if result["success"]:
+            print_formatted_result(result)
+            break
+        else:
+            print("Submission failed. Retrying entire process...\n")
 
 
 if __name__ == "__main__":
